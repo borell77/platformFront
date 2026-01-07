@@ -1,47 +1,49 @@
-// src/pages/GroupPage.jsx
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../services/api';
 
 export default function GroupPage() {
   const { groupId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams(); // ← добавлено
   const [group, setGroup] = useState(null);
   const [students, setStudents] = useState([]);
   const [lessons, setLessons] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const refreshParam = searchParams.get('refresh');
 
   const user = JSON.parse(localStorage.getItem('user'));
   const isTeacher = user?.role === 'TEACHER';
 
+  
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        
-        // Загружаем данные группы
-        const groupRes = await api.get(`/groups/${groupId}`);
-        setGroup(groupRes.data);
-        
-        if (isTeacher) {
-          // Учитель: список учеников
-          const studentsRes = await api.get(`/groups/${groupId}/students`);
-          setStudents(studentsRes.data);
-        } else {
-          // Ученик: список уроков
-          const lessonsRes = await api.get(`/lessons/group/${groupId}`);
-          setLessons(lessonsRes.data);
-        }
-      } catch (err) {
-        console.error('Ошибка загрузки группы:', err);
-        setError('Не удалось загрузить группу');
-      } finally {
-        setLoading(false);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+
+      // Загружаем данные группы
+      const groupRes = await api.get(`/groups/${groupId}`);
+      setGroup(groupRes.data);
+
+      if (isTeacher) {
+        // Учитель: список учеников
+        const studentsRes = await api.get(`/groups/${groupId}/students`);
+        setStudents(studentsRes.data);
+      } else {
+        // Ученик: список уроков с прогрессом
+        const lessonsRes = await api.get(`/lessons/group/${groupId}/with-progress`);
+        setLessons(lessonsRes.data);
       }
-    };
-    fetchData();
-  }, [groupId, isTeacher]);
+    } catch (err) {
+      console.error('Ошибка загрузки группы:', err);
+      setError('Не удалось загрузить группу');
+    } finally {
+      setLoading(false);
+    }
+  };
+  fetchData();
+}, [groupId, isTeacher, refreshParam]);
 
   const handleCreateLesson = () => {
     navigate(`/groups/${groupId}/lessons/new`);
@@ -186,11 +188,18 @@ function TeacherGroupContent({ groupId, students, onCreateLesson }) {
   );
 }
 
-// Контент для ученика
+
 function StudentGroupContent({ lessons, onStartLesson }) {
+  const completedCount = lessons.filter(l => l.completed).length;
+
   return (
     <div>
-      <h2 className="text-lg font-semibold text-gray-800 mb-6">Уроки в группе ({lessons.length})</h2>
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-lg font-semibold text-gray-800">Уроки в группе ({lessons.length})</h2>
+        <span className="text-sm text-gray-500">
+          Завершено: {completedCount} из {lessons.length}
+        </span>
+      </div>
       
       {lessons.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-gray-300">
@@ -202,13 +211,68 @@ function StudentGroupContent({ lessons, onStartLesson }) {
           {lessons.map(lesson => (
             <div 
               key={lesson.id} 
-              className="bg-white p-5 rounded-xl border border-gray-200 hover:border-blue-300 transition cursor-pointer"
+              className={`
+                bg-white p-5 rounded-xl border transition-all duration-300 cursor-pointer relative overflow-hidden
+                ${lesson.completed 
+                  ? 'border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-md hover:shadow-lg' 
+                  : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
+                }
+              `}
               onClick={() => onStartLesson(lesson.id)}
             >
-              <div className="font-bold text-lg text-gray-900">{lesson.title}</div>
-              <div className="text-sm text-gray-600 mt-1">
-                Блоков: {lesson.blocks?.length || 0}
+              {/* Акцентная линия слева при завершении */}
+              {lesson.completed && (
+                <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-green-400 to-emerald-500"></div>
+              )}
+              
+              <div className="flex justify-between items-start pl-2">
+                <div>
+                  <div className={`
+                    font-bold text-lg transition-colors
+                    ${lesson.completed 
+                      ? 'text-green-800' 
+                      : 'text-gray-900 hover:text-blue-600'
+                    }
+                  `}>
+                    {lesson.title}
+                  </div>
+                  <div className={`
+                    text-sm mt-1 transition-colors
+                    ${lesson.completed 
+                      ? 'text-green-700' 
+                      : 'text-gray-600'
+                    }
+                  `}>
+                    Блоков: {lesson.blocks?.length || 0}
+                  </div>
+                </div>
+                
+                {lesson.completed && (
+                  <div className={`
+                    w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 
+                    flex items-center justify-center shadow-md transition-transform hover:scale-105
+                  `}>
+                    <svg 
+                      className="w-5 h-5 text-white" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path 
+                        strokeLinecap="round" 
+                        strokeLinejoin="round" 
+                        strokeWidth={2} 
+                        d="M5 13l4 4L19 7" 
+                      />
+                    </svg>
+                  </div>
+                )}
               </div>
+              
+              {/* Тень при наведении для незавершённых */}
+              {!lesson.completed && (
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-indigo-50 opacity-0 hover:opacity-100 transition-opacity pointer-events-none"></div>
+              )}
             </div>
           ))}
         </div>
