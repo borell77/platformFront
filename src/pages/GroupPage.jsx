@@ -5,7 +5,7 @@ import api from '../services/api';
 export default function GroupPage() {
   const { groupId } = useParams();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams(); // ← добавлено
+  const [searchParams] = useSearchParams();
   const [group, setGroup] = useState(null);
   const [students, setStudents] = useState([]);
   const [lessons, setLessons] = useState([]);
@@ -16,41 +16,65 @@ export default function GroupPage() {
   const user = JSON.parse(localStorage.getItem('user'));
   const isTeacher = user?.role === 'TEACHER';
 
-  
   useEffect(() => {
-  const fetchData = async () => {
-    try {
-      setLoading(true);
+    const fetchData = async () => {
+      try {
+        setLoading(true);
 
-      // Загружаем данные группы
-      const groupRes = await api.get(`/groups/${groupId}`);
-      setGroup(groupRes.data);
+        // Загружаем данные группы
+        const groupRes = await api.get(`/groups/${groupId}`);
+        setGroup(groupRes.data);
 
-      if (isTeacher) {
-        // Учитель: список учеников
-        const studentsRes = await api.get(`/groups/${groupId}/students`);
-        setStudents(studentsRes.data);
-      } else {
-        // Ученик: список уроков с прогрессом
-        const lessonsRes = await api.get(`/lessons/group/${groupId}/with-progress`);
-        setLessons(lessonsRes.data);
+        if (isTeacher) {
+          // Учитель: список учеников и уроков
+          const studentsRes = await api.get(`/groups/${groupId}/students`);
+          setStudents(studentsRes.data);
+
+          const lessonsRes = await api.get(`/lessons/group/${groupId}`);
+          setLessons(lessonsRes.data);
+        } else {
+          // Ученик: список уроков с прогрессом
+          const lessonsRes = await api.get(`/lessons/group/${groupId}/with-progress`);
+          setLessons(lessonsRes.data);
+        }
+      } catch (err) {
+        console.error('Ошибка загрузки группы:', err);
+        setError('Не удалось загрузить группу');
+      } finally {
+        setLoading(false);
       }
-    } catch (err) {
-      console.error('Ошибка загрузки группы:', err);
-      setError('Не удалось загрузить группу');
-    } finally {
-      setLoading(false);
-    }
-  };
-  fetchData();
-}, [groupId, isTeacher, refreshParam]);
+    };
+    fetchData();
+  }, [groupId, isTeacher, refreshParam]);
 
   const handleCreateLesson = () => {
     navigate(`/groups/${groupId}/lessons/new`);
   };
 
-  const handleStartLesson = (lessonId) => {
+  const handleViewLesson = (lessonId) => {
     navigate(`/groups/${groupId}/lessons/${lessonId}`);
+  };
+
+  const handleEditLesson = (lessonId) => {
+    navigate(`/groups/${groupId}/lessons/${lessonId}/edit`);
+  };
+
+  const handleDeleteLesson = async (lessonId, event) => {
+    event.stopPropagation(); // Останавливаем всплытие, чтобы не открывался урок при клике
+
+    if (!window.confirm('Вы уверены, что хотите удалить этот урок?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/lessons/${lessonId}`);
+      // Обновляем список уроков
+      setLessons(lessons.filter(lesson => lesson.id !== lessonId));
+      alert('Урок успешно удалён');
+    } catch (err) {
+      console.error('Ошибка удаления урока:', err);
+      alert('Не удалось удалить урок');
+    }
   };
 
   if (loading) {
@@ -121,12 +145,16 @@ export default function GroupPage() {
           <TeacherGroupContent 
             groupId={groupId}
             students={students}
+            lessons={lessons}
             onCreateLesson={handleCreateLesson}
+            onViewLesson={handleViewLesson}
+            onEditLesson={handleEditLesson}
+            onDeleteLesson={handleDeleteLesson}
           />
         ) : (
           <StudentGroupContent 
             lessons={lessons}
-            onStartLesson={handleStartLesson}
+            onStartLesson={handleViewLesson}
           />
         )}
       </main>
@@ -153,7 +181,7 @@ const getSubjectName = (subject) => {
 };
 
 // Контент для учителя
-function TeacherGroupContent({ groupId, students, onCreateLesson }) {
+function TeacherGroupContent({ groupId, students, lessons, onCreateLesson, onViewLesson, onEditLesson, onDeleteLesson }) {
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center">
@@ -166,6 +194,58 @@ function TeacherGroupContent({ groupId, students, onCreateLesson }) {
         </button>
       </div>
 
+      {/* Список уроков */}
+      <div>
+        <h3 className="font-medium text-gray-800 mb-4">Уроки в группе ({lessons.length})</h3>
+        
+        {lessons.length === 0 ? (
+          <div className="text-center py-8 bg-white rounded-xl border border-dashed border-gray-300">
+            <div className="text-3xl mb-2">📚</div>
+            <p className="text-gray-600">Вы пока не добавили уроков</p>
+            <button
+              onClick={onCreateLesson}
+              className="mt-3 px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+            >
+              Создать первый урок
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {lessons.map(lesson => (
+              <div 
+                key={lesson.id} 
+                className="bg-white p-5 rounded-xl border border-gray-200 hover:border-blue-300 transition-all"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="font-bold text-lg text-gray-900">{lesson.title}</div>
+                    <div className="text-sm text-gray-600 mt-1">
+                      Блоков: {lesson.blocks?.length || 0}
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => onEditLesson(lesson.id)}
+                      className="px-3 py-1.5 text-sm bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition"
+                    >
+                      Редактировать
+                    </button>
+                    <button
+                      onClick={(e) => onDeleteLesson(lesson.id, e)}
+                      className="px-3 py-1.5 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 transition"
+                    >
+                      Удалить
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Список учеников */}
       <div>
         <h3 className="font-medium text-gray-800 mb-4">Список учеников ({students.length})</h3>
         {students.length === 0 ? (
@@ -188,9 +268,8 @@ function TeacherGroupContent({ groupId, students, onCreateLesson }) {
   );
 }
 
-
 function StudentGroupContent({ lessons, onStartLesson }) {
-  const completedCount = lessons.filter(l => l.completed).length;
+  const completedCount = lessons.filter(l => l.completed).length; // ← исправлено
 
   return (
     <div>
@@ -213,15 +292,14 @@ function StudentGroupContent({ lessons, onStartLesson }) {
               key={lesson.id} 
               className={`
                 bg-white p-5 rounded-xl border transition-all duration-300 cursor-pointer relative overflow-hidden
-                ${lesson.completed 
+                ${lesson.completed // ← исправлено
                   ? 'border-green-400 bg-gradient-to-r from-green-50 to-emerald-50 shadow-md hover:shadow-lg' 
                   : 'border-gray-200 hover:border-blue-300 hover:shadow-sm'
                 }
               `}
               onClick={() => onStartLesson(lesson.id)}
             >
-              {/* Акцентная линия слева при завершении */}
-              {lesson.completed && (
+              {lesson.completed && ( // ← исправлено
                 <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-green-400 to-emerald-500"></div>
               )}
               
@@ -229,7 +307,7 @@ function StudentGroupContent({ lessons, onStartLesson }) {
                 <div>
                   <div className={`
                     font-bold text-lg transition-colors
-                    ${lesson.completed 
+                    ${lesson.completed // ← исправлено
                       ? 'text-green-800' 
                       : 'text-gray-900 hover:text-blue-600'
                     }
@@ -238,7 +316,7 @@ function StudentGroupContent({ lessons, onStartLesson }) {
                   </div>
                   <div className={`
                     text-sm mt-1 transition-colors
-                    ${lesson.completed 
+                    ${lesson.completed // ← исправлено
                       ? 'text-green-700' 
                       : 'text-gray-600'
                     }
@@ -247,7 +325,7 @@ function StudentGroupContent({ lessons, onStartLesson }) {
                   </div>
                 </div>
                 
-                {lesson.completed && (
+                {lesson.completed && ( // ← исправлено
                   <div className={`
                     w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 
                     flex items-center justify-center shadow-md transition-transform hover:scale-105
@@ -269,8 +347,7 @@ function StudentGroupContent({ lessons, onStartLesson }) {
                 )}
               </div>
               
-              {/* Тень при наведении для незавершённых */}
-              {!lesson.completed && (
+              {!lesson.completed && ( // ← исправлено
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-50 to-indigo-50 opacity-0 hover:opacity-100 transition-opacity pointer-events-none"></div>
               )}
             </div>

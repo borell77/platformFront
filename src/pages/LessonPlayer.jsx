@@ -90,7 +90,6 @@ export default function LessonPlayer() {
   const completeLesson = async () => {
   try {
     await api.post(`/lessons/${lessonId}/complete`);
-    alert('✅ Урок завершён!');
     // Добавляем параметр refresh, чтобы GroupPage перезагрузил данные
     navigate(`/groups/${groupId}?refresh=1`);
   } catch (err) {

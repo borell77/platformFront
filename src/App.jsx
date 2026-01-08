@@ -12,6 +12,8 @@ import TeacherDashboard from './pages/TeacherDashboard';
 import LessonConstructor from './pages/LessonConstructor'; 
 import LessonPlayer from './pages/LessonPlayer'; 
 import GroupPage from './pages/GroupPage';         
+import LessonEditor from './pages/LessonEditor';
+
 
 export default function App() {
   return (
@@ -69,11 +71,28 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        {/* НОВОЕ: маршрут для редактирования урока */}
+        <Route
+          path="/groups/:groupId/lessons/:lessonId/edit"
+          element={
+            <ProtectedRoute allowedRole="TEACHER">
+              <LessonEditor />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/groups/:groupId"
           element={
             <ProtectedRoute>
               <GroupPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/groups/:groupId/lessons/:lessonId/edit"
+          element={
+            <ProtectedRoute allowedRole="TEACHER">
+              <LessonEditor />
             </ProtectedRoute>
           }
         />
